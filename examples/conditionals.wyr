@@ -1,0 +1,37 @@
+msg:string "Inside"
+msgo:string "Outside"
+
+nl:string 10
+
+f:buffer 18
+fo:buffer 18
+
+f<<msg
+f<<nl
+fo<<msgo
+fo<<nl
+
+.output fo
+
+y:int 2
+x:int 2
+
+if (y == x)
+	.output f
+fi
+
+.output fo
+
+// Clear buffer
+.clear_buff f
+.clear_buff fo
+
+// Prints nothing
+.output fo
+
+msgfinal:string "Cleaned"
+
+fo<<msgfinal
+fo<<nl
+// Prints "Cleaned\n"
+.output fo

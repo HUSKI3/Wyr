@@ -1,0 +1,25 @@
+// For the name prompt as well as output
+prompt:string "Name: "
+promptbuf:buffer 16
+
+// Define new line and name input buffer
+newline:string 10
+name:buffer 16
+
+// Add the prompt to the output buffer
+promptbuf<<prompt
+
+// Display prompt and get name
+.output promptbuf
+.input name
+
+// Write the result out
+outbuf:buffer 255
+
+msg:string "Hello "
+
+// Final buffer to print "Hello Name"
+outbuf<<msg
+outbuf<<name
+
+.output outbuf

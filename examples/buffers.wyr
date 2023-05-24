@@ -1,0 +1,11 @@
+msg:string "Buffer"
+nl:string 10
+f:buffer 18
+
+f<<msg
+f<<nl
+
+.output f
+
+// Clear buffer
+.clear_buff f

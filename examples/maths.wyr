@@ -1,13 +1,21 @@
-y:int 0
+y:i16 0
 
 .add y,100
 .sub y,20
 
+f:buffer 18
+
+pass:string "Pass"
+fail:string "Fail"
+nl:string 10
+
 if (y == 80)
-	f:buffer 18
-	msg:string "Pass"
-	nl:string 10
-	f<<msg
+	f<<pass
 	f<<nl
 	.output f
 fi
+else 
+	f<<fail
+	f<<nl
+	.output f
+esle 

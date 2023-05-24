@@ -6,6 +6,9 @@ wyr
 *.so
 *.dylib
 *.dll
+*.out
+*.asm
+out
 
 # Ignore binary output folders
 bin/

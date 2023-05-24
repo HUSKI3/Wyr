@@ -16,16 +16,34 @@ struct Exception {
 	source string
 	line int
 	hint string
+	@type string = "e"
 }
 
-fn raise(e &Exception) {
-	println("\033[31;1;4m[Exception] at ${e.line} => ${e.msg}\033[0m")
-	println("\033[32;49;3m${e.line}\033[0m\033[37;49;1m\t${e.source}\033[0m")
-	if e.hint.len != 0 {
-		println("\033[36;49;3m${e.hint}\033[0m")
-	}
-	exit(1)
+struct Warning {
+	msg string
+	source string
+	line int
+	hint string
+	@type string = "w"
 }
+
+fn raise(e &Exception | &Warning) {
+	if (e.@type == "e"){
+		println("\033[31;1;4m[Exception] at ${e.line} => ${e.msg}\033[0m")
+		println("\033[32;49;3m${e.line}\033[0m\033[37;49;1m\t${e.source}\033[0m")
+		if e.hint.len != 0 {
+			println("\033[36;49;3m${e.hint}\033[0m")
+		}
+		exit(1)
+	} else {
+		println("\033[33;4;1m[Warning] at ${e.line} => ${e.msg}\033[0m")
+		println("\033[32;49;3m${e.line}\033[0m\033[37;49;1m\t${e.source}\033[0m")
+		if e.hint.len != 0 {
+			println("\033[36;49;3m${e.hint}\033[0m")
+		}
+	}
+}
+
 
 enum Types {
 	@none
@@ -499,8 +517,12 @@ fn parsetokens(
 
 					skip = body.len
 					
-					// Add jump to end or something
-					text << "\tjmp ${*id}_end\n"
+					// --Add jump to end or something--
+					// peak here, need to check if we have an else coming up
+					if  (complete[index + 1 + skip..].len > 0) &&
+						(&complete[index + 1 + skip..][0].value == "else") {
+						text << "\tjmp ${*id}_end\n"
+					}
 
 					text << "${*id}_ne:\n"
 
@@ -1046,17 +1068,36 @@ fn lextokens(clean_code []string, record_flag bool, debug bool, lineoverride int
 				}
 				value: value
 			}
+			if token.valtype == Types.integer {
+				e := &Warning{
+					msg: "Integer type will soon be redundant"
+					source: chunk
+					line: line+lineoverride+1
+					hint: "Please specify the size of your integers using i8, i16, i32 and i64"
+				}
+				raise(e)
+			}
 		} else {
 			e := &Exception{
 				msg: "Unknown statement"
 				source: chunk
-				line: line+lineoverride
+				line: line+lineoverride+1
 				hint: "Refer to the guidebook for language documentation"
 			}
 			raise(e)
 		}
 
 		complete << token
+	}
+
+	if record_flag {
+		e := &Exception{
+			msg: "Trailing chunk"
+			source: ""
+			line: clean_code.len + lineoverride + 1
+			hint: "Perhaps you forgot to terminate a code block?"
+		}
+		raise(e)
 	}
 
 	return complete

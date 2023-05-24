@@ -12,11 +12,8 @@ fo<<nl
 
 .output fo
 
-y:int 3
-x:int 1
-
-.sub y,1
-.add x,2
+y:i16 1
+x:i16 1
 
 if (y == x)
 	f<<msg

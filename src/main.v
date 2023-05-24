@@ -403,14 +403,25 @@ fn parsetokens(
 					skip = body.len
 					
 					// Add jump to end or something
-					text << "\tje ${*id}_end\n"
+					text << "\tjmp ${*id}_end\n"
 
 					text << "${*id}_ne:\n"
 
 				} else {
-					text << "${*id}:\n"
+					// Else
+					
+					// Build body
+					parsetokens(
+						body, 
+						mut bss, 
+						mut data, 
+						mut text, 
+						mut variables, 
+						mut buffers, 
+						builtin
+					)
 
-					// body
+					skip = body.len
 					
 					text << "iftree_${(*id)[9..]}_end:\n"
 				}

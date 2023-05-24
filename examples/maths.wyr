@@ -1,0 +1,13 @@
+y:int 0
+
+.add y,100
+.sub y,20
+
+if (y == 80)
+	f:buffer 18
+	msg:string "Pass"
+	nl:string 10
+	f<<msg
+	f<<nl
+	.output f
+fi

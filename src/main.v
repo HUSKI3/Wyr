@@ -143,13 +143,17 @@ fn main() {
 	mut builtin := {
 		"output": [
 			"\tmov rax, 1\n" +
-    		"\tmov rdi, 1\n"
+    		"\tmov rdi, 1\n"+
+			"\tsyscall\n"
 		],
 		"input": [
 			"\tmov rax, 0\n" +
-			"\tmov rdi, 0\n" 
+			"\tmov rdi, 0\n" +
+			"\tsyscall\n"
 		],
-		"clear_buff": []
+		"clear_buff": [],
+		"add": [],
+		"sub": []
 	}
 
 	// remember declarations
@@ -323,80 +327,104 @@ fn parsetokens(
 				value := &token.value
 				body := token.extra
 
-				first_element_raw  := (*value).split(' ')[0]
-				operand            := (*value).split(' ')[1]
-				second_element_raw := (*value).split(' ')[2]
+				if (*value).len > 0 {
 
-				op := operands[operand]
+					first_element_raw  := (*value).split(' ')[0]
+					operand            := (*value).split(' ')[1]
+					second_element_raw := (*value).split(' ')[2]
 
-				if is_numeric(first_element_raw) {
-					text << "\tmov eax, ${first_element_raw}\n"
+					op := operands[operand]
+
+					if is_numeric(first_element_raw) {
+						text << "\tmov eax, ${first_element_raw}\n"
+					} else {
+						if !(first_element_raw in variables) {
+							e := &Exception{
+								msg: "Unknown variable"
+								source: token.source
+								line: token.line+1
+								hint: "No such variable '${first_element_raw}'\n" +
+									"Perhaps it's not declared?"
+							}
+							raise(e)
+						}
+						if variables[first_element_raw].@type != Types.integer {
+							e := &Exception{
+								msg: "Invalid item for comparison"
+								source: token.source
+								line: token.line+1
+								hint: "Variable '${first_element_raw}' is not of type int\n" +
+									"Only integers can be used for evaluation"
+							}
+							raise(e)
+						}
+						text << "\tmov eax, [${first_element_raw}]\n"
+					}
+
+					if is_numeric(second_element_raw) {
+						text << "\tcmp eax, ${second_element_raw}\n"
+					} else {
+						if !(second_element_raw in variables) {
+							e := &Exception{
+								msg: "Unknown variable"
+								source: token.source
+								line: token.line+1
+								hint: "No such variable '${second_element_raw}'\n" +
+									"Perhaps it's not declared?"
+							}
+							raise(e)
+						}
+						if variables[second_element_raw].@type != Types.integer {
+							e := &Exception{
+								msg: "Invalid item for comparison"
+								source: token.source
+								line: token.line+1
+								hint: "Variable '${second_element_raw}' is not of type int\n" +
+									"Only integers can be used for evaluation"
+							}
+							raise(e)
+						}
+						text << "\tcmp eax, [${second_element_raw}]\n"
+					}
+
+					text << "\tjne ${*id}_ne\n"
+
+					// Build body
+					parsetokens(
+						body, 
+						mut bss, 
+						mut data, 
+						mut text, 
+						mut variables, 
+						mut buffers, 
+						builtin
+					)
+
+					skip = body.len
+					
+					// Add jump to end or something
+					text << "\tjmp ${*id}_end\n"
+
+					text << "${*id}_ne:\n"
+
 				} else {
-					if !(first_element_raw in variables) {
-						e := &Exception{
-							msg: "Unknown variable"
-							source: token.source
-							line: token.line+1
-							hint: "No such variable '${first_element_raw}'\n" +
-								  "Perhaps it's not declared?"
-						}
-						raise(e)
-					}
-					if variables[first_element_raw].@type != Types.integer {
-						e := &Exception{
-							msg: "Invalid item for comparison"
-							source: token.source
-							line: token.line+1
-							hint: "Variable '${first_element_raw}' is not of type int\n" +
-								  "Only integers can be used for evaluation"
-						}
-						raise(e)
-					}
-					text << "\tmov eax, [${first_element_raw}]\n"
+					// Else
+					
+					// Build body
+					parsetokens(
+						body, 
+						mut bss, 
+						mut data, 
+						mut text, 
+						mut variables, 
+						mut buffers, 
+						builtin
+					)
+
+					skip = body.len
+					
+					text << "iftree_${(*id)[9..]}_end:\n"
 				}
-
-				if is_numeric(second_element_raw) {
-					text << "\tcmp eax, ${second_element_raw}\n"
-				} else {
-					if !(second_element_raw in variables) {
-						e := &Exception{
-							msg: "Unknown variable"
-							source: token.source
-							line: token.line+1
-							hint: "No such variable '${second_element_raw}'\n" +
-								  "Perhaps it's not declared?"
-						}
-						raise(e)
-					}
-					if variables[second_element_raw].@type != Types.integer {
-						e := &Exception{
-							msg: "Invalid item for comparison"
-							source: token.source
-							line: token.line+1
-							hint: "Variable '${second_element_raw}' is not of type int\n" +
-								  "Only integers can be used for evaluation"
-						}
-						raise(e)
-					}
-					text << "\tcmp eax, [${second_element_raw}]\n"
-				}
-
-				text << "\tjne ${*id}_ne\n"
-
-				// Build body
-				parsetokens(
-					body, 
-					mut bss, 
-					mut data, 
-					mut text, 
-					mut variables, 
-					mut buffers, 
-					builtin
-				)
-
-				skip = body.len
-
-				text << "${*id}_ne:\n"
 				
 			}
 
@@ -484,7 +512,7 @@ fn parsetokens(
 					}
 				}
 
-		
+
 			}
 
 			.function {
@@ -505,24 +533,121 @@ fn parsetokens(
 					}
 					raise(e)
 				}
+
+				if *id in ["add", "sub"] {
+					mut first_element_raw := ""
+					mut second_element_raw := ""
+					mut var_priority := 0
+					if (*value).contains(",") {
+						first_element_raw = value.split(",")[0]
+						second_element_raw = value.split(",")[1]
+					} else {
+						e := &Exception{
+							msg: "Invalid usage"
+							source: token.source
+							line: token.line+1
+							hint: ".add expects two values separated with a ','\n" +
+								  "Example: .add x,1"
+						}
+						raise(e)
+					}
+						/*
+						Example:
+							mov ax, [my_variable] ; Move the value of my_variable into AX register
+						    add ax, 10           ; Add 10 to the value in AX
+						    mov [my_variable], ax ; Move the result from AX back to my_variable
+						*/
+
+					if is_numeric(first_element_raw) {
+						text << "\tmov ax, ${first_element_raw}\n"
+						var_priority = 2
+					} else {
+						if !(first_element_raw in variables) {
+							e := &Exception{
+								msg: "Unknown variable"
+								source: token.source
+								line: token.line+1
+								hint: "No such variable '${first_element_raw}'\n" +
+									  "Perhaps it's not declared?"
+							}
+							raise(e)
+						}
+						if variables[first_element_raw].@type != Types.integer {
+							e := &Exception{
+								msg: "Invalid item for comparison"
+								source: token.source
+								line: token.line+1
+								hint: "Variable '${first_element_raw}' is not of type int\n" +
+									  "Only integers can be used for evaluation"
+							}
+							raise(e)
+						}
+						text << "\tmov ax, [${first_element_raw}]\n"
+						var_priority = 1
+					}
+
+					if is_numeric(second_element_raw) {
+						text << "\t${*id} ax, ${second_element_raw}\n"
+						var_priority = 1
+					} else {
+						if !(second_element_raw in variables) {
+							e := &Exception{
+								msg: "Unknown variable"
+								source: token.source
+								line: token.line+1
+								hint: "No such variable '${second_element_raw}'\n" +
+									  "Perhaps it's not declared?"
+							}
+							raise(e)
+						}
+						if variables[second_element_raw].@type != Types.integer {
+							e := &Exception{
+								msg: "Invalid item for comparison"
+								source: token.source
+								line: token.line+1
+								hint: "Variable '${second_element_raw}' is not of type int\n" +
+									  "Only integers can be used for evaluation"
+							}
+							raise(e)
+						}
+						text << "\t${*id} ax, [${second_element_raw}]\n"
+						var_priority = 2
+					}
+
+					if var_priority == 1 {
+						text << "\tmov [${first_element_raw}], ax\n"
+					} else if var_priority == 2 {
+						text << "\tmov [${second_element_raw}], ax\n"
+					} else {
+						e := &Exception{
+							msg: "Invalid addition target"
+							source: token.source
+							line: token.line+1
+							hint: "This token was never constructed\n" +
+								  "Perhaps the lexer branch for this type is incomplete?"
+						}
+						raise(e)
+					}
+				}
+
 				// Add our data
 				// Example:
 				//		mov rsi, output
     			//		mov rdx, output_len + input
 
-				if !(*value in variables) {
-					e := &Exception{
-						msg: "Unknown variable"
-						source: token.source
-						line: token.line+1
-						hint: "Calling a function '${*id}' with unknown variable '${*value}'\n" +
-							  "Perhaps it's not declared?"
-					}
-					raise(e)
-				} 
-				
 				// output override
-				if *id == "output" {
+				else if *id == "output" {
+					if !(*value in variables) {
+						e := &Exception{
+							msg: "Unknown variable"
+							source: token.source
+							line: token.line+1
+							hint: "Calling a function '${*id}' with unknown variable '${*value}'\n" +
+								  "Perhaps it's not declared?"
+						}
+						raise(e)
+					} 
+				
 					if variables[*value].@type != Types.buffer {
 						e := &Exception{
 							msg: "Invalid type"
@@ -537,7 +662,18 @@ fn parsetokens(
 					text << "\tmov rdx, ${*value}_len\n"
 				}
 
-				if *id == "input" {
+				else if *id == "input" {
+					if !(*value in variables) {
+						e := &Exception{
+							msg: "Unknown variable"
+							source: token.source
+							line: token.line+1
+							hint: "Calling a function '${*id}' with unknown variable '${*value}'\n" +
+								  "Perhaps it's not declared?"
+						}
+						raise(e)
+					} 
+
 					if variables[*value].@type != Types.buffer {
 						e := &Exception{
 							msg: "Invalid type"
@@ -552,7 +688,18 @@ fn parsetokens(
 					text << "\tmov rdx, 16\n"
 				}
 
-				if *id == "clear_buff" {
+				else if *id == "clear_buff" {
+					if !(*value in variables) {
+						e := &Exception{
+							msg: "Unknown variable"
+							source: token.source
+							line: token.line+1
+							hint: "Calling a function '${*id}' with unknown variable '${*value}'\n" +
+								  "Perhaps it's not declared?"
+						}
+						raise(e)
+					} 
+
 					if variables[*value].@type != Types.buffer {
 						e := &Exception{
 							msg: "Invalid type"
@@ -580,11 +727,10 @@ fn parsetokens(
 					buffers[*id] = []
 				}
 
-				for e in call {
-					text << e
+				for c in call {
+					text << "$c\n"
 				}
 
-				text << "\tsyscall\n"
 			}
 			.@none {
 				e := &Exception{
@@ -622,7 +768,13 @@ fn lextokens(clean_code []string, record_flag bool, debug bool, lineoverride int
 			source: chunk
 		}
 		
-		if debug {println("$line $chunk")}
+		if debug {
+			if record_flag {
+				println("\x1b[35;43;1m$line\x1b[0m -> $chunk\x1b[0m")
+			} else {
+				println("\x1b[37;42;1m$line\x1b[0m -> $chunk\x1b[0m")
+			}
+		}
 		
 		if chunk.len == 0 {
 			continue
@@ -634,13 +786,6 @@ fn lextokens(clean_code []string, record_flag bool, debug bool, lineoverride int
 
 		else if chunk[0..2] == "if" {
 			mut proc_head := chunk.split('(')[1].split(')')[0]
-
-			// When you get back,
-			// Instead of doing this shit here
-			// Make a token such as:
-			// 		id: iftree_depth
-			// 		value: [first, op, second]
-			// 		type: conditional
 
 			newtokens := lextokens(clean_code[line+1..], true, debug, line+1)
 
@@ -656,7 +801,26 @@ fn lextokens(clean_code []string, record_flag bool, debug bool, lineoverride int
 			ifdepth++
 		}
 
-		else if chunk[0..2] == "fi" {
+		else if  chunk[0..2] == "fi" {
+			if debug {println("Done recording")}
+			if record_flag {return complete} else {continue}
+		}
+
+		else if chunk.len >= 4 && chunk[0..4] == "else" {
+
+			newtokens := lextokens(clean_code[line+1..], true, debug, line+1)
+
+			token = &Token{
+				id: "elsetree_${ifdepth-1}"
+				value: ""
+				source: chunk
+				line: line+lineoverride
+				@type: TokenTypes.conditional
+				extra: newtokens
+			}
+		}
+
+		else if chunk.len >= 4 && chunk[0..4] == "esle" {
 			if debug {println("Done recording")}
 			if record_flag {return complete} else {continue}
 		}

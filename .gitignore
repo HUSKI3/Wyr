@@ -8,6 +8,8 @@ wyr
 *.dll
 *.out
 out.*
+*.asm
+out
 
 # Ignore binary output folders
 bin/

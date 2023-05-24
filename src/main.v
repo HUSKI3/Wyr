@@ -16,21 +16,43 @@ struct Exception {
 	source string
 	line int
 	hint string
+	@type string = "e"
 }
 
-fn raise(e &Exception) {
-	println("\033[31;1;4m[Exception] at ${e.line} => ${e.msg}\033[0m")
-	println("\033[32;49;3m${e.line}\033[0m\033[37;49;1m\t${e.source}\033[0m")
-	if e.hint.len != 0 {
-		println("\033[36;49;3m${e.hint}\033[0m")
-	}
-	exit(1)
+struct Warning {
+	msg string
+	source string
+	line int
+	hint string
+	@type string = "w"
 }
+
+fn raise(e &Exception | &Warning) {
+	if (e.@type == "e"){
+		println("\033[31;1;4m[Exception] at ${e.line} => ${e.msg}\033[0m")
+		println("\033[32;49;3m${e.line}\033[0m\033[37;49;1m\t${e.source}\033[0m")
+		if e.hint.len != 0 {
+			println("\033[36;49;3m${e.hint}\033[0m")
+		}
+		exit(1)
+	} else {
+		println("\033[33;4;1m[Warning] at ${e.line} => ${e.msg}\033[0m")
+		println("\033[32;49;3m${e.line}\033[0m\033[37;49;1m\t${e.source}\033[0m")
+		if e.hint.len != 0 {
+			println("\033[36;49;3m${e.hint}\033[0m")
+		}
+	}
+}
+
 
 enum Types {
 	@none
 	ident
 	str
+	i8
+	i16
+	i32
+	i64
 	integer
 	buffer
 }
@@ -38,8 +60,16 @@ enum Types {
 const typesizes = {
 	Types.ident: 0,
 	Types.str: 2,
-	Types.integer: 1,
+	Types.integer: 8,
 	Types.buffer: 0
+}
+
+const loadsizes = {
+	0: "invalid",
+	1: "db",
+	2: "dw",
+	4: "dd",
+	8: "dq"
 }
 
 enum TokenTypes {
@@ -250,6 +280,70 @@ fn parsetokens(
 				} 
 
 				match token.valtype {
+					.i8 {
+						if token.flag == Flags.@const {
+							// Write to bss
+							bss << "\t${*id} equ ${*value}\n"
+						} else {
+							data << "\t${*id}: db ${*value}\n"
+						}
+						// Add to variables
+						variables[*id] = &Variable{
+							id: *id
+							@type: token.valtype
+							value: *value
+							token: token
+							@const: token.flag == Flags.@const
+						}
+					}
+					.i16 {
+						if token.flag == Flags.@const {
+							// Write to bss
+							bss << "\t${*id} equ ${*value}\n"
+						} else {
+							data << "\t${*id}: dw ${*value}\n"
+						}
+						// Add to variables
+						variables[*id] = &Variable{
+							id: *id
+							@type: token.valtype
+							value: *value
+							token: token
+							@const: token.flag == Flags.@const
+						}
+					}
+					.i32 {
+						if token.flag == Flags.@const {
+							// Write to bss
+							bss << "\t${*id} equ ${*value}\n"
+						} else {
+							data << "\t${*id}: dd ${*value}\n"
+						}
+						// Add to variables
+						variables[*id] = &Variable{
+							id: *id
+							@type: token.valtype
+							value: *value
+							token: token
+							@const: token.flag == Flags.@const
+						}
+					}
+					.i64 {
+						if token.flag == Flags.@const {
+							// Write to bss
+							bss << "\t${*id} equ ${*value}\n"
+						} else {
+							data << "\t${*id}: dq ${*value}\n"
+						}
+						// Add to variables
+						variables[*id] = &Variable{
+							id: *id
+							@type: token.valtype
+							value: *value
+							token: token
+							@const: token.flag == Flags.@const
+						}
+					}
 					.integer {
 						if token.flag == Flags.@const {
 							// Write to bss
@@ -335,6 +429,8 @@ fn parsetokens(
 
 					op := operands[operand]
 
+					mut comparison_type := "i32:i64"
+
 					if is_numeric(first_element_raw) {
 						text << "\tmov eax, ${first_element_raw}\n"
 					} else {
@@ -348,17 +444,27 @@ fn parsetokens(
 							}
 							raise(e)
 						}
-						if variables[first_element_raw].@type != Types.integer {
+						if !(variables[first_element_raw].@type in [
+							Types.integer,
+							Types.i8, Types.i16, Types.i32, Types.i64
+						]) {
 							e := &Exception{
 								msg: "Invalid item for comparison"
 								source: token.source
 								line: token.line+1
-								hint: "Variable '${first_element_raw}' is not of type int\n" +
+								hint: "Variable '${first_element_raw}'<${variables[first_element_raw].@type}> is not of type int\n" +
 									"Only integers can be used for evaluation"
 							}
 							raise(e)
 						}
-						text << "\tmov eax, [${first_element_raw}]\n"
+						if variables[first_element_raw].@type in [
+							Types.i8, Types.i16
+						] {
+							text << "\tmov al, byte [${first_element_raw}]\n"
+							comparison_type = "i8:i16"
+						} else {
+							text << "\tmov eax, [${first_element_raw}]\n"
+						}
 					}
 
 					if is_numeric(second_element_raw) {
@@ -374,17 +480,26 @@ fn parsetokens(
 							}
 							raise(e)
 						}
-						if variables[second_element_raw].@type != Types.integer {
+						if !(variables[second_element_raw].@type in [
+							Types.integer,
+							Types.i8, Types.i16, Types.i32, Types.i64
+						]) {
 							e := &Exception{
 								msg: "Invalid item for comparison"
 								source: token.source
 								line: token.line+1
-								hint: "Variable '${second_element_raw}' is not of type int\n" +
+								hint: "Variable '${second_element_raw}'<${variables[second_element_raw].@type}>  is not of type int\n" +
 									"Only integers can be used for evaluation"
 							}
 							raise(e)
 						}
-						text << "\tcmp eax, [${second_element_raw}]\n"
+						if variables[second_element_raw].@type in [
+							Types.i8, Types.i16
+						] {
+							text << "\tcmp al, byte [${second_element_raw}]\n"
+						} else {
+							text << "\tcmp al, [${second_element_raw}]\n"
+						}
 					}
 
 					text << "\tjne ${*id}_ne\n"
@@ -402,8 +517,12 @@ fn parsetokens(
 
 					skip = body.len
 					
-					// Add jump to end or something
-					text << "\tjmp ${*id}_end\n"
+					// --Add jump to end or something--
+					// peak here, need to check if we have an else coming up
+					if  (complete[index + 1 + skip..].len > 0) &&
+						(&complete[index + 1 + skip..][0].source == "else") {
+						text << "\tjmp ${*id}_end\n"
+					}
 
 					text << "${*id}_ne:\n"
 
@@ -572,13 +691,16 @@ fn parsetokens(
 							}
 							raise(e)
 						}
-						if variables[first_element_raw].@type != Types.integer {
+						if !(variables[first_element_raw].@type in [
+							Types.integer,
+							Types.i8, Types.i16, Types.i32, Types.i64
+						]) {
 							e := &Exception{
-								msg: "Invalid item for comparison"
+								msg: "Invalid item for mathematical operations"
 								source: token.source
 								line: token.line+1
 								hint: "Variable '${first_element_raw}' is not of type int\n" +
-									  "Only integers can be used for evaluation"
+									  "Only integers can be used"
 							}
 							raise(e)
 						}
@@ -600,13 +722,16 @@ fn parsetokens(
 							}
 							raise(e)
 						}
-						if variables[second_element_raw].@type != Types.integer {
+						if !(variables[second_element_raw].@type in [
+							Types.integer,
+							Types.i8, Types.i16, Types.i32, Types.i64
+						]) {
 							e := &Exception{
-								msg: "Invalid item for comparison"
+								msg: "Invalid item for mathematical operations"
 								source: token.source
 								line: token.line+1
-								hint: "Variable '${second_element_raw}' is not of type int\n" +
-									  "Only integers can be used for evaluation"
+								hint: "Variable '${first_element_raw}' is not of type int\n" +
+									  "Only integers can be used"
 							}
 							raise(e)
 						}
@@ -924,6 +1049,10 @@ fn lextokens(clean_code []string, record_flag bool, debug bool, lineoverride int
 				source: chunk
 				valtype: match @type {
 					"string" {Types.str}
+					"i8" {Types.i8}
+					"i16" {Types.i16}
+					"i32" {Types.i32}
+					"i64" {Types.i64}
 					"int" {Types.integer}
 					"buffer" {Types.buffer}
 					else {
@@ -939,17 +1068,36 @@ fn lextokens(clean_code []string, record_flag bool, debug bool, lineoverride int
 				}
 				value: value
 			}
+			if token.valtype == Types.integer {
+				e := &Warning{
+					msg: "Integer type will soon be redundant"
+					source: chunk
+					line: line+lineoverride+1
+					hint: "Please specify the size of your integers using i8, i16, i32 and i64"
+				}
+				raise(e)
+			}
 		} else {
 			e := &Exception{
 				msg: "Unknown statement"
 				source: chunk
-				line: line+lineoverride
+				line: line+lineoverride+1
 				hint: "Refer to the guidebook for language documentation"
 			}
 			raise(e)
 		}
 
 		complete << token
+	}
+
+	if record_flag {
+		e := &Exception{
+			msg: "Trailing chunk"
+			source: ""
+			line: clean_code.len + lineoverride + 1
+			hint: "Perhaps you forgot to terminate a code block?"
+		}
+		raise(e)
 	}
 
 	return complete

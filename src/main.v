@@ -520,7 +520,7 @@ fn parsetokens(
 					// --Add jump to end or something--
 					// peak here, need to check if we have an else coming up
 					if  (complete[index + 1 + skip..].len > 0) &&
-						(&complete[index + 1 + skip..][0].value == "else") {
+						(&complete[index + 1 + skip..][0].source == "else") {
 						text << "\tjmp ${*id}_end\n"
 					}
 

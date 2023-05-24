@@ -409,6 +409,10 @@ fn parsetokens(
 
 				} else {
 					text << "${*id}:\n"
+
+					// body
+					
+					text << "iftree_${(*id)[9..]}_end:\n"
 				}
 				
 			}

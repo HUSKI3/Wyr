@@ -26,3 +26,6 @@ bin/
 # vweb and database
 *.db
 *.js
+
+# testing
+test.py

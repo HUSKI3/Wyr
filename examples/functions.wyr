@@ -1,0 +1,37 @@
+
+msg:string "Hi "
+nl:string 10
+f:buffer 34
+name:buffer 16
+prompt:string "Name: "
+promptbuf:buffer 16
+
+fn void @clean_up () {
+	.clear_buff f
+}
+
+fn void @printfbuf () {
+	.output f
+}
+
+fn void @askname () {
+	promptbuf<<prompt
+	.output promptbuf
+	.input name
+	.clear_buff promptbuf
+}
+
+fn void @sayhi () {
+	f<<msg
+	f<<name
+	f<<nl
+	@printfbuf()
+	@clean_up()
+	// .ret 1
+}
+
+@askname()
+@sayhi()
+
+// should show nothing!
+@printfbuf()

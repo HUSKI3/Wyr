@@ -1,0 +1,17 @@
+y:i16 0
+msg:string "Hi "
+nl:string 10
+f:buffer 34
+
+against:i16 327
+
+// Currently only i16 are supported for numeric comparison
+// and they are fucked
+while (y < against) {
+	f<<msg
+	f<<nl
+	.output f
+	.add y,1
+	.clear_buff f
+}
+

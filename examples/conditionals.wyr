@@ -24,7 +24,28 @@ esle
 
 f<<nl
 .output f
+.output fo
 
+// Clear buffer
+.clear_buff f
+.clear_buff fo
+
+.add y,1
+
+fo<<msgo
+fo<<nl
+
+.output fo
+
+if (y == 2)
+	f<<msg
+fi
+else
+	f<<msge
+esle
+
+f<<nl
+.output f
 .output fo
 
 // Clear buffer

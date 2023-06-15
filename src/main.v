@@ -28,7 +28,7 @@ struct Warning {
 }
 
 fn raise(e &Exception | &Warning) {
-	if (e.@type == "e"){
+	if e.@type == "e" {
 		println("\033[31;1;4m[Exception] at ${e.line} => ${e.msg}\033[0m")
 		println("\033[32;49;3m${e.line}\033[0m\033[37;49;1m\t${e.source}\033[0m")
 		if e.hint.len != 0 {
@@ -47,6 +47,7 @@ fn raise(e &Exception | &Warning) {
 
 enum Types {
 	@none
+	unset
 	ident
 	str
 	i8
@@ -75,14 +76,27 @@ const loadsizes = {
 enum TokenTypes {
 	@none
 	variable
+	decfunction
 	function
+	userfunction
 	action
 	extra
 	conditional
+	while
 }
 
 const operands = {
-	"==": "cmp"
+	"==": "jne",
+	"!=": "je",
+	"<": "jg",
+	">": "jl"
+
+}
+const operands_factual = {
+	"==": "je",
+	"!=": "jne"
+	"<": "jl",
+	">": "jg"
 }
 
 enum Flags {
@@ -110,11 +124,17 @@ struct Variable {
 	@const bool
 }
 
+struct Function {
+	id string
+	returns Types
+	token Token
+}
+
 fn main() {
 	mut fp := flag.new_flag_parser(os.args)
 
 	fp.application("wyr")
-	fp.version("0.0.1")
+	fp.version("0.0.13")
 	fp.description('Simple language to abstract nasm')
 	fp.skip_executable()
 
@@ -161,7 +181,7 @@ fn main() {
 		clean_code << txt
 	}
 
-	mut complete := lextokens(clean_code, false, debug, 0)
+	mut complete := lextokens(clean_code,false, debug, 0)
 
 	if debug {
 		println("Finished constructing tokens")
@@ -179,7 +199,11 @@ fn main() {
 		"input": [
 			"\tmov rax, 0\n" +
 			"\tmov rdi, 0\n" +
-			"\tsyscall\n"
+			"\tsyscall\n" +
+			"\tmov edi, eax\n" +
+			"\tdec edi\n" +
+			"\tadd rsi, rdi\n" +
+			"\tmov byte [rsi], 0\n"
 		],
 		"clear_buff": [],
 		"add": [],
@@ -187,6 +211,7 @@ fn main() {
 	}
 
 	// remember declarations
+	mut functions := map[string]&Function{}
 	mut variables := map[string]&Variable{}
 	mut buffers   := map[string][]string{}
 
@@ -204,12 +229,16 @@ fn main() {
 		"\t_start:\n"
 	]
 
+	mut tailtext := []string{}
+
 	parsetokens(
 		complete, 
 		mut bss, 
 		mut data, 
 		mut text, 
+		mut tailtext,
 		mut variables, 
+		mut functions,
 		mut buffers, 
 		builtin
 	)
@@ -237,6 +266,9 @@ fn main() {
 	for elem in text {
 		output.write(elem.bytes())!
 	}
+	for elem in tailtext {
+		output.write(elem.bytes())!
+	}
 
 	println("Built!")
 	// mut out := os.execute("nasm -felf64 out.asm && ld out.o && ./a.out")
@@ -248,7 +280,9 @@ fn parsetokens(
 	mut bss []string, 
 	mut data []string, 
 	mut text []string,
+	mut tailtext []string,
 	mut variables map[string]&Variable,
+	mut functions map[string]&Function,
 	mut buffers map[string][]string,
 	builtin map[string][]string
 ) {
@@ -429,7 +463,7 @@ fn parsetokens(
 
 					op := operands[operand]
 
-					mut comparison_type := "i32:i64"
+					// mut comparison_type := "i32:i64"
 
 					if is_numeric(first_element_raw) {
 						text << "\tmov eax, ${first_element_raw}\n"
@@ -461,7 +495,7 @@ fn parsetokens(
 							Types.i8, Types.i16
 						] {
 							text << "\tmov al, byte [${first_element_raw}]\n"
-							comparison_type = "i8:i16"
+							// comparison_type = "i8:i16"
 						} else {
 							text << "\tmov eax, [${first_element_raw}]\n"
 						}
@@ -502,7 +536,7 @@ fn parsetokens(
 						}
 					}
 
-					text << "\tjne ${*id}_ne\n"
+					text << "\t${op} ${*id}_ne\n"
 
 					// Build body
 					parsetokens(
@@ -510,7 +544,9 @@ fn parsetokens(
 						mut bss, 
 						mut data, 
 						mut text, 
+						mut tailtext,
 						mut variables, 
+						mut functions,
 						mut buffers, 
 						builtin
 					)
@@ -535,7 +571,9 @@ fn parsetokens(
 						mut bss, 
 						mut data, 
 						mut text, 
+						mut tailtext,
 						mut variables, 
+						mut functions,
 						mut buffers, 
 						builtin
 					)
@@ -545,6 +583,128 @@ fn parsetokens(
 					text << "iftree_${(*id)[9..]}_end:\n"
 				}
 				
+			}
+
+			.while {
+				id := &token.id
+				value := &token.value
+				body := token.extra
+
+				if (*value).len > 0 {
+
+					first_element_raw  := (*value).split(' ')[0]
+					operand            := (*value).split(' ')[1]
+					second_element_raw := (*value).split(' ')[2]
+
+					op := operands_factual[operand]
+
+					text << "${*id}:\n"
+
+					// mut comparison_type := "i32:i64"
+
+					// Build body
+					parsetokens(
+						body, 
+						mut bss, 
+						mut data, 
+						mut text, 
+						mut tailtext,
+						mut variables, 
+						mut functions,
+						mut buffers, 
+						builtin
+					)
+
+					skip = body.len
+
+					if is_numeric(first_element_raw) {
+						text << "\tmov eax, ${first_element_raw}\n"
+					} else {
+						if !(first_element_raw in variables) {
+							e := &Exception{
+								msg: "Unknown variable"
+								source: token.source
+								line: token.line+1
+								hint: "No such variable '${first_element_raw}'\n" +
+									"Perhaps it's not declared?"
+							}
+							raise(e)
+						}
+						if !(variables[first_element_raw].@type in [
+							Types.integer,
+							Types.i8, Types.i16, Types.i32, Types.i64
+						]) {
+							e := &Exception{
+								msg: "Invalid item for comparison"
+								source: token.source
+								line: token.line+1
+								hint: "Variable '${first_element_raw}'<${variables[first_element_raw].@type}> is not of type int\n" +
+									"Only integers can be used for evaluation"
+							}
+							raise(e)
+						}
+						if variables[first_element_raw].@type in [
+							Types.i8, Types.i16
+						] {
+							text << "\tmov al, byte [${first_element_raw}]\n"
+							// comparison_type = "i8:i16"
+						} else {
+							text << "\tmov eax, [${first_element_raw}]\n"
+						}
+					}
+
+					if is_numeric(second_element_raw) {
+						text << "\tcmp eax, ${second_element_raw}\n"
+					} else {
+						if !(second_element_raw in variables) {
+							e := &Exception{
+								msg: "Unknown variable"
+								source: token.source
+								line: token.line+1
+								hint: "No such variable '${second_element_raw}'\n" +
+									"Perhaps it's not declared?"
+							}
+							raise(e)
+						}
+						if !(variables[second_element_raw].@type in [
+							Types.integer,
+							Types.i8, Types.i16, Types.i32, Types.i64
+						]) {
+							e := &Exception{
+								msg: "Invalid item for comparison"
+								source: token.source
+								line: token.line+1
+								hint: "Variable '${second_element_raw}'<${variables[second_element_raw].@type}>  is not of type int\n" +
+									"Only integers can be used for evaluation"
+							}
+							raise(e)
+						}
+						if variables[second_element_raw].@type in [
+							Types.i8, Types.i16
+						] {
+							text << "\tcmp al, byte [${second_element_raw}]\n"
+						}
+						else if variables[second_element_raw].@type in [
+							Types.i64
+						] {
+							text << "\tcmp aex, dword [${second_element_raw}]\n"
+						} else {
+							text << "\tcmp eax, [${second_element_raw}]\n"
+						}
+					}
+
+					text << "\t${op} ${*id}\n"
+					
+					// --Add jump to end or something--
+					// peak here, need to check if we have an else coming up
+					if  (complete[index + 1 + skip..].len > 0) &&
+						(&complete[index + 1 + skip..][0].source == "else") {
+						text << "\tjmp ${*id}_exit\n"
+					}
+
+					text << "${*id}_exit:\n"
+
+				}
 			}
 
 			.action {
@@ -611,6 +771,8 @@ fn parsetokens(
 							follow += " + ${elem}_len"
 						}
 
+						// println("Followers of ${*id}: ${buffers[*id]}")
+
 						text << "\tlea rsi, [${*value}]\n"
 						text << "\tlea rdi, [${*id}$follow]\n"
 						text << "\tmov rcx, ${*value}_len\n"
@@ -619,6 +781,7 @@ fn parsetokens(
 
 						// Add a follower
 						buffers[*id] << *value
+						// buffers[*id].free()
 					}
 					else {
 						e := &Exception{
@@ -849,13 +1012,159 @@ fn parsetokens(
 							"\tcld\n" +
 							"\trep stosb\n"
 
-					buffers[*id] = []
+					buffers[*value].clear()
 				}
 
 				for c in call {
 					text << "$c\n"
 				}
 
+			}
+			.decfunction {
+				/*
+				; Function prologue
+				mov rbp, rsp
+
+				; Accessing the arguments
+				mov eax, [ebp+8]   ; Retrieve the first argument (5)
+				mov ebx, [ebp+12]  ; Retrieve the second argument (3)
+
+				; Rest of the function code
+
+				; Function epilogue
+				pop ebp
+				ret
+				*/
+
+				id := &token.id
+				// value := &token.value
+				source := &token.source
+				body := &token.extra
+				ret := (&token.source).split(" ")[1]
+				return_type := match ret {
+							"void" {Types.@none}
+							"string" {Types.str}
+							"i8" {Types.i8}
+							"i16" {Types.i16}
+							"i32" {Types.i32}
+							"i64" {Types.i64}
+							"int" {Types.integer}
+							"buffer" {Types.buffer}
+							else {
+								e := &Exception{
+									msg: "Unknown type ${ret}"
+									hint: "No type '${ret}' exists. Is it spelt correctly?"
+								}
+								raise(e)
+								Types.@none
+							}
+				}
+				mut arguments := source.split('(')[1].split(')')[0].split(',').map(
+					fn (arg string) string {
+						return arg.trim(" ")
+					}
+				)
+
+				tailtext << "\n${*id}:\n"
+
+				// Construct head
+				tailtext << "\n; Function prologue
+\tpush rbp
+\tmov rbp, rsp\n"
+
+				for arg in arguments {
+					if arg == '' { break }
+					argtype, argname := arg.split_once(" ")
+
+					// Set id in asm
+					variables[argname] = &Variable{
+						id: argname
+						@type: match argtype {
+							"string" {Types.str}
+							"i8" {Types.i8}
+							"i16" {Types.i16}
+							"i32" {Types.i32}
+							"i64" {Types.i64}
+							"int" {Types.integer}
+							"buffer" {Types.buffer}
+							else {
+								e := &Exception{
+									msg: "Unknown type ${argtype}"
+									hint: "No type '${argtype}' exists. Is it spelt correctly?"
+								}
+								raise(e)
+								Types.@none
+							}
+						}
+						value: ""
+					}
+
+					// Add to code
+
+				}
+
+				// println(variables)
+
+				// println(body)
+
+				mut has_ret := false
+				mut ret_typ := "unset"
+
+				for tok in body {
+					if tok.@type == TokenTypes.function {
+						if tok.id == ".ret" {
+							has_ret = true
+							
+							// Check type
+							if tok.value.contains_only("1234567890") {
+								ret_typ = "i32"
+							}
+						}
+					}
+				}
+
+				if return_type != Types.@none && (has_ret == false || ret_typ == "unset") {
+					// println()
+					e := &Exception{
+						msg: "Return type not set or body contains no return"
+						source: source
+						hint: ""
+					}
+					raise(e)
+				}
+
+				// exit(1)
+
+				mut tail_text := []string{}
+
+				// Build body
+				parsetokens(
+					*body, 
+					mut bss, 
+					mut data, 
+					mut tail_text, 
+					mut tailtext,
+					mut variables, 
+					mut functions,
+					mut buffers, 
+					builtin
+				)
+
+				for elem in tail_text {
+					tailtext << elem
+				}
+
+				// Construct tail
+				tailtext << "; Function epilogue
+\tpop rbp
+\tret\n"
+
+				skip = (*body).len
+				// Function should be after the done label
+			}
+			.userfunction {
+				id := &token.id
+				text << "\tcall ${*id}\n"
 			}
 			.@none {
 				e := &Exception{
@@ -884,7 +1193,7 @@ fn lextokens(clean_code []string, record_flag bool, debug bool, lineoverride int
 	// Start translation
 	mut complete := []&Token{}
 	mut ifdepth  := 0
-	mut recorded := []&Token
+	// mut recorded := []&Token
 
 	for line, chunk in clean_code {
 		mut token := &Token{
@@ -905,11 +1214,28 @@ fn lextokens(clean_code []string, record_flag bool, debug bool, lineoverride int
 			continue
 		} 
 
-		else if chunk[0..2] == "//" {
+		else if chunk.len >= 2 && chunk[0..2] == "//" {
 			continue
 		}
 
-		else if chunk[0..2] == "if" {
+		else if chunk.len >= 5 && chunk[0..5] == "while" {
+			mut proc_head := chunk.split('(')[1].split(')')[0]
+
+			newtokens := lextokens(clean_code[line+1..], true, debug, line+1)
+
+			token = &Token{
+				id: "while_${ifdepth}"
+				value: proc_head
+				source: chunk
+				line: line+lineoverride
+				@type: TokenTypes.while
+				extra: newtokens
+			}
+
+			ifdepth++
+		}
+
+		else if chunk.len >= 2 && chunk[0..2] == "if" {
 			mut proc_head := chunk.split('(')[1].split(')')[0]
 
 			newtokens := lextokens(clean_code[line+1..], true, debug, line+1)
@@ -926,7 +1252,35 @@ fn lextokens(clean_code []string, record_flag bool, debug bool, lineoverride int
 			ifdepth++
 		}
 
-		else if  chunk[0..2] == "fi" {
+		else if chunk.len >= 2 && chunk[0..2] == "fn" {
+			mut return_type := chunk.split('fn')[1].trim(" ").split(" ")[0]
+			mut func_name   := chunk.split('@')[1].split(' ')[0]
+			mut arguments   := chunk.split('(')[1].split(')')[0].split(',')
+
+			mut local_offset := 0
+
+			if !(chunk.split("").contains("{")) {
+				local_offset += 1
+			}
+
+			newtokens := lextokens(clean_code[line+1+local_offset..], true, debug, line+1)
+
+			token = &Token{
+				id: "${func_name}"
+				value: "${return_type} % ${func_name} % ${arguments}"
+				source: chunk
+				line: line+lineoverride
+				@type: TokenTypes.decfunction
+				extra: newtokens
+			}
+		}
+		
+		else if chunk[0] == `}` {
+			if debug {println("Done recording")}
+			if record_flag {return complete} else {continue}
+		}
+
+		else if chunk.len >= 2 && chunk[0..2] == "fi" {
 			if debug {println("Done recording")}
 			if record_flag {return complete} else {continue}
 		}
@@ -973,6 +1327,20 @@ fn lextokens(clean_code []string, record_flag bool, debug bool, lineoverride int
 				source: chunk
 				valtype: Types.ident
 				value: value
+			}
+		}
+
+		else if chunk[0] == `@` {
+			mut id := chunk.split("@")[1].split("(")[0]
+			
+			// Found a decfunction call
+			token = &Token{
+				id: id
+				line: line+lineoverride
+				@type: TokenTypes.userfunction
+				source: chunk
+				valtype: Types.ident
+				value: chunk
 			}
 		}
 

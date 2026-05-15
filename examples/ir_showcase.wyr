@@ -1,0 +1,464 @@
+wyr 1
+// =============================================================================
+// ir_showcase.wyr — large handwritten IR demo (v1)
+// Exercises: sized ints, const, fn + @calls in expressions, if/else, while,
+// buffer<< (string + buffer), dynamic buffers (loop-grown + runtime decimal),
+// .output / .clear_buff, six SysV args, shadowing, modulo/division, kernels.
+//
+// Note: lowered symbols are flat in .asm — use unique param/local names across
+// all functions. Top-level `name:i32` declarations must appear before any
+// executable line (`.output`, `@…`) or later code cannot see that name. Do not
+// use the identifier `fib_show` as a top-level binding (parser bug in v1).
+// Top-level @user(a,b) args are parsed with naive paren split;
+// use scratch = @foo(...) then `ex = want` / `@assert_eq(scratch, ex)` (literal
+// second args to @assert_eq can mis-lower for some immediates). String literals
+// must not contain the substring `<<` (the lexer treats it as buffer append).
+// Each buffer has a lowering companion `name_used` (dword): `.output buf` sends
+// `buf_used` bytes; `buffer<<` appends at that tail. `.poke8 buf, expr` writes
+// the low 8 bits of expr to buf[0] (buf size must be at least 1).
+// =============================================================================
+
+// --- shared strings & constants ------------------------------------------------
+
+nl:string 10
+s_pass:string "PASS "
+s_fail:string "FAIL "
+s_sep:string "----------------------------------------"
+s_title:string "WYR IR showcase (handwritten)"
+s_math:string "[math]"
+s_flow:string "[control flow & buffers]"
+s_abi:string "[ABI & scope]"
+s_done:string "ir_showcase.wyr finished."
+
+ten:i32 10 const
+// `ten` is assemble-time `equ`; avoid `scratch = ten` in v1 (can mis-lower / fault at runtime).
+hundred:i32 100 const
+// Same `equ` caveats as `ten` — do not pass as @call argument in v1.
+
+// Shared scratch buffer for runtime-built lines (clear before each use).
+dyn_txt:buffer 256
+digit_cell:buffer 1
+tick_buf:buffer 48
+
+tick_seg:string "|->"
+dyn_lbl_fib:string "fib(8) as decimal bytes: "
+
+// --- assertions & I/O helpers --------------------------------------------------
+
+fn void @assert_eq (i32 ae_got, i32 ae_want) {
+	ae_buf:buffer 32
+	ae_d:i32 0
+	ae_d = ae_got - ae_want
+	if (ae_d == 0)
+		ae_buf<<s_pass
+	fi
+	else
+		ae_buf<<s_fail
+	esle
+	ae_buf<<nl
+	.output ae_buf
+	.clear_buff ae_buf
+}
+
+// Avoid names NASM treats specially (`section`, `emit`, …)
+fn void @hrule () {
+	ds_buf:buffer 128
+	ds_buf<<s_sep
+	ds_buf<<nl
+	.output ds_buf
+	.clear_buff ds_buf
+}
+
+// Append one decimal digit 0..9: explicit ASCII code unit (rune / byte).
+// `48` is ASCII '0'; low 8 bits written via .poke8 then copied into dyn_txt.
+fn void @dapp_digit (i32 dj_d) {
+	.poke8 digit_cell, 48 + dj_d
+	dyn_txt<<digit_cell
+}
+
+// Decimal 0..99 into dyn_txt (tens omitted when zero, except with ones).
+fn void @demit_u32_0_99 (i32 du_n) {
+	du_hi:i32 0
+	du_lo:i32 0
+	du_hi = du_n / 10
+	du_lo = du_n % 10
+	if (du_hi != 0)
+		@dapp_digit(du_hi)
+	fi
+	@dapp_digit(du_lo)
+}
+
+// --- numeric kernels -------------------------------------------------------------
+
+fn i32 @iabs (i32 ab_x) {
+	if (ab_x < 0)
+		.ret 0 - ab_x
+	fi
+	else
+		.ret ab_x
+	esle
+}
+
+fn i32 @min (i32 mn_a, i32 mn_b) {
+	if (mn_a < mn_b)
+		.ret mn_a
+	fi
+	else
+		.ret mn_b
+	esle
+}
+
+fn i32 @max (i32 mx_a, i32 mx_b) {
+	if (mx_a > mx_b)
+		.ret mx_a
+	fi
+	else
+		.ret mx_b
+	esle
+}
+
+fn i32 @clamp (i32 cl_v, i32 cl_lo, i32 cl_hi) {
+	.ret @min(@max(cl_v, cl_lo), cl_hi)
+}
+
+fn i32 @sign (i32 sg_x) {
+	if (sg_x < 0)
+		.ret -1
+	fi
+	if (sg_x == 0)
+		.ret 0
+	fi
+	.ret 1
+}
+
+fn i32 @gcd (i32 gc_a, i32 gc_b) {
+	gc_t:i32 0
+	while (gc_b != 0) {
+		gc_t = gc_a % gc_b
+		gc_a = gc_b
+		gc_b = gc_t
+	}
+	.ret @iabs(gc_a)
+}
+
+fn i32 @lcm (i32 lc_a, i32 lc_b) {
+	lc_g:i32 0
+	lc_g = @gcd(lc_a, lc_b)
+	.ret (lc_a / lc_g) * lc_b
+}
+
+fn i32 @isqrt (i32 is_n) {
+	is_r:i32 0
+	is_next:i32 1
+	is_r = 0
+	is_next = 1
+	if (is_n < 0)
+		.ret 0
+	fi
+	while (is_next <= is_n / is_next) {
+		is_r = is_next
+		is_next = is_next + 1
+	}
+	.ret is_r
+}
+
+fn i32 @nondiv (i32 nd_n, i32 nd_d) {
+	nd_m:i32 0
+	nd_m = nd_n % nd_d
+	if (nd_m == 0)
+		.ret 0
+	fi
+	.ret 1
+}
+
+fn i32 @is_prime (i32 ip_n) {
+	ip_d:i32 2
+	ip_lim:i32 0
+	ip_ok:i32 1
+	ip_d = 2
+	ip_ok = 1
+	if (ip_n < 2)
+		.ret 0
+	fi
+	ip_lim = @isqrt(ip_n)
+	while (ip_d <= ip_lim) {
+		ip_ok = ip_ok * @nondiv(ip_n, ip_d)
+		ip_d = ip_d + 1
+	}
+	.ret ip_ok
+}
+
+fn i32 @fact (i32 fc_n) {
+	fc_p:i32 1
+	fc_i:i32 1
+	while (fc_i <= fc_n) {
+		fc_p = fc_p * fc_i
+		fc_i = fc_i + 1
+	}
+	.ret fc_p
+}
+
+fn i32 @fib (i32 fb_n) {
+	fb_prev:i32 0
+	fb_cur:i32 1
+	fb_i:i32 0
+	fb_nxt:i32 0
+	fb_prev = 0
+	fb_cur = 1
+	fb_i = 0
+	fb_nxt = 0
+	while (fb_i < fb_n) {
+		fb_nxt = fb_prev + fb_cur
+		fb_prev = fb_cur
+		fb_cur = fb_nxt
+		fb_i = fb_i + 1
+	}
+	.ret fb_prev
+}
+
+fn i32 @collatz_steps (i32 cz_n) {
+	cz_s:i32 0
+	cz_t:i32 0
+	cz_half:i32 0
+	cz_tri:i32 0
+	while (cz_n > 1) {
+		cz_t = cz_n % 2
+		cz_half = cz_n / 2
+		cz_tri = 3 * cz_n + 1
+		cz_n = cz_t * cz_tri + (1 - cz_t) * cz_half
+		cz_s = cz_s + 1
+	}
+	.ret cz_s
+}
+
+fn i32 @sum_to (i32 st_n) {
+	st_s:i32 0
+	st_i:i32 1
+	while (st_i <= st_n) {
+		st_s = st_s + st_i
+		st_i = st_i + 1
+	}
+	.ret st_s
+}
+
+fn i32 @fletcher16 (i32 fl_n) {
+	fl_s1:i32 0
+	fl_s2:i32 0
+	fl_i:i32 0
+	while (fl_i < fl_n) {
+		fl_s1 = (fl_s1 + fl_i) % 255
+		fl_s2 = (fl_s2 + fl_s1) % 255
+		fl_i = fl_i + 1
+	}
+	.ret fl_s2 * 256 + fl_s1
+}
+
+fn i32 @sum6 (i32 s6_a, i32 s6_b, i32 s6_c, i32 s6_d, i32 s6_e, i32 s6_f) {
+	.ret s6_a + s6_b + s6_c + s6_d + s6_e + s6_f
+}
+
+fn i32 @read_shadow (i32 rs_global_g) {
+	.ret rs_global_g
+}
+
+// --- driver --------------------------------------------------------------------
+
+global_g:i32 7
+m1:i32 -1
+scratch:i32 0
+ex:i32 0
+ti:i32 0
+
+// =============================================================================
+// Top-level program
+// =============================================================================
+
+banner:buffer 128
+banner<<s_title
+banner<<nl
+.output banner
+.clear_buff banner
+
+@hrule()
+
+math_hdr:buffer 64
+math_hdr<<s_math
+math_hdr<<nl
+.output math_hdr
+.clear_buff math_hdr
+
+scratch = @iabs(0)
+ex = 0
+@assert_eq(scratch, ex)
+scratch = @iabs(42)
+ex = 42
+@assert_eq(scratch, ex)
+scratch = @iabs(-99)
+ex = 99
+@assert_eq(scratch, ex)
+
+scratch = @min(3, 7)
+ex = 3
+@assert_eq(scratch, ex)
+scratch = @max(3, 7)
+ex = 7
+@assert_eq(scratch, ex)
+scratch = @clamp(5, 10, 20)
+ex = 10
+@assert_eq(scratch, ex)
+scratch = @clamp(15, 10, 20)
+ex = 15
+@assert_eq(scratch, ex)
+scratch = @clamp(99, 10, 20)
+ex = 20
+@assert_eq(scratch, ex)
+scratch = @clamp(@max(1, 9), 0, 8)
+ex = 8
+@assert_eq(scratch, ex)
+
+scratch = @sign(-5)
+ex = m1
+@assert_eq(scratch, ex)
+scratch = @sign(0)
+ex = 0
+@assert_eq(scratch, ex)
+scratch = @sign(12)
+ex = 1
+@assert_eq(scratch, ex)
+
+scratch = @gcd(48, 18)
+ex = 6
+@assert_eq(scratch, ex)
+scratch = @gcd(14, 21)
+ex = 7
+@assert_eq(scratch, ex)
+scratch = @lcm(12, 18)
+ex = 36
+@assert_eq(scratch, ex)
+
+scratch = @isqrt(0)
+ex = 0
+@assert_eq(scratch, ex)
+scratch = @isqrt(15)
+ex = 3
+@assert_eq(scratch, ex)
+scratch = @isqrt(16)
+ex = 4
+@assert_eq(scratch, ex)
+scratch = @isqrt(1000000)
+ex = 1000
+@assert_eq(scratch, ex)
+
+scratch = @is_prime(2)
+ex = 1
+@assert_eq(scratch, ex)
+scratch = @is_prime(17)
+ex = 1
+@assert_eq(scratch, ex)
+scratch = @is_prime(16)
+ex = 0
+@assert_eq(scratch, ex)
+
+scratch = @fact(0)
+ex = 1
+@assert_eq(scratch, ex)
+scratch = @fact(5)
+ex = 120
+@assert_eq(scratch, ex)
+scratch = @fact(10)
+ex = 3628800
+@assert_eq(scratch, ex)
+
+scratch = @fib(0)
+ex = 0
+@assert_eq(scratch, ex)
+scratch = @fib(1)
+ex = 1
+@assert_eq(scratch, ex)
+scratch = @fib(8)
+ex = 21
+@assert_eq(scratch, ex)
+
+scratch = @collatz_steps(1)
+ex = 0
+@assert_eq(scratch, ex)
+scratch = @collatz_steps(27)
+ex = 111
+@assert_eq(scratch, ex)
+
+scratch = @sum_to(10)
+ex = 55
+@assert_eq(scratch, ex)
+scratch = @fletcher16(20)
+ex = 14270
+@assert_eq(scratch, ex)
+
+@hrule()
+
+flow_hdr:buffer 64
+flow_hdr<<s_flow
+flow_hdr<<nl
+.output flow_hdr
+.clear_buff flow_hdr
+
+lo32:i32 0
+while (lo32 < 4) {
+	lo32 = lo32 + 1
+}
+ex = 4
+@assert_eq(lo32, ex)
+
+flow_line:string "+ buffer append +"
+flow_buf:buffer 48
+flow_buf<<flow_line
+flow_buf<<nl
+.output flow_buf
+.clear_buff flow_buf
+
+.clear_buff tick_buf
+ti = 0
+while (ti < 6) {
+	tick_buf<<tick_seg
+	ti = ti + 1
+}
+tick_buf<<nl
+.output tick_buf
+.clear_buff tick_buf
+
+// Runtime-built line: label + decimal digits of fib(8) into dyn_txt.
+.clear_buff dyn_txt
+dyn_txt<<dyn_lbl_fib
+scratch = @fib(8)
+@demit_u32_0_99(scratch)
+dyn_txt<<nl
+.output dyn_txt
+.clear_buff dyn_txt
+
+@hrule()
+
+abi_hdr:buffer 64
+abi_hdr<<s_abi
+abi_hdr<<nl
+.output abi_hdr
+.clear_buff abi_hdr
+
+scratch = @sum6(1, 2, 3, 4, 5, 6)
+ex = 21
+@assert_eq(scratch, ex)
+
+scratch = @sum6(10, 20, 30, 40, 50, 60)
+ex = 210
+@assert_eq(scratch, ex)
+
+shadow_tmp:i32 0
+shadow_tmp = @read_shadow(1000)
+ex = 1000
+@assert_eq(shadow_tmp, ex)
+ex = 7
+@assert_eq(global_g, ex)
+
+tail:buffer 64
+tail<<s_done
+tail<<nl
+.output tail
+.clear_buff tail

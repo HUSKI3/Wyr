@@ -1,0 +1,167 @@
+wyr 1
+
+// =====================================================
+// SIMPLE TEXT ADVENTURE IN WYR IR
+// =====================================================
+
+// ---------------------
+// GLOBAL VARIABLES
+// ---------------------
+room:i32 0
+has_key:i32 0
+game_running:i32 1
+choice:i32 0
+
+// ---------------------
+// BUFFERS
+// ---------------------
+input:buffer 32
+buff:buffer 255
+
+// ---------------------
+// STRINGS
+// ---------------------
+welcome:string "Welcome to the Dungeon of Wyr!\n"
+menu:string "\nChoose an action:\n1. Go north\n2. Go east\n3. Search room\n4. Quit\n> "
+invalid:string "Invalid choice.\n"
+quit_msg:string "You leave the dungeon.\n"
+
+start_room:string "\nYou are in a cold stone chamber.\nThere is a hallway north.\n"
+key_room:string "\nYou enter a dusty library.\nSomething glimmers in the corner.\n"
+treasure_room_locked:string "\nA massive golden door blocks your path. It is locked.\n"
+treasure_room_open:string "\nThe golden door opens slowly...\nInside is a mountain of treasure!\nYOU WIN!\n"
+found_key:string "You found a rusty key!\n"
+already_key:string "You already took the key.\n"
+need_key:string "You need a key to open this door.\n"
+
+// ---------------------
+// FUNCTIONS
+// ---------------------
+
+fn void @show_room()
+
+    if ( room == 0 )
+        buff<<start_room
+    fi
+
+    if ( room == 1 )
+        buff<<key_room
+    fi
+
+    if ( room == 2 )
+        if ( has_key == 1 )
+            buff<<treasure_room_open
+            game_running = 0
+        esle
+            buff<<treasure_room_locked
+            buff<<need_key
+        fi
+    fi
+    .output buff
+}
+
+fn void @search_room()
+    if ( room == 1 )
+        if ( has_key == 0 )
+            .output found_key
+            has_key = 1
+        esle
+            .output already_key
+        fi
+    esle
+        .output invalid
+    fi
+}
+
+fn void @move_north()
+    if ( room == 0 )
+        room = 1
+    esle
+        .output invalid
+    fi
+}
+
+fn void @move_east()
+    if ( room == 1 )
+        room = 2
+    esle
+        .output invalid
+    fi
+}
+
+// -------------------------------------------------
+// NOTE:
+// This example assumes your compiler/runtime has
+// some way to convert input buffer data into an int.
+// Since the IR spec does not yet define parsing,
+// the example below simulates menu selection.
+// -------------------------------------------------
+
+// MAIN PROGRAM
+
+.output welcome
+
+while ( game_running == 1 )
+    @show_room()
+
+    .output menu
+
+    .clear_buff input
+    .input input
+
+    // -----------------------------------------
+    // VERY SIMPLE INPUT HANDLING
+    // -----------------------------------------
+    // Assumes first byte contains ASCII number.
+    // Your backend/runtime may implement this
+    // differently.
+    //
+    // 49 = '1'
+    // 50 = '2'
+    // 51 = '3'
+    // 52 = '4'
+    // -----------------------------------------
+
+    // Fake parser behavior represented through
+    // direct assignments for demonstration.
+
+    // Example placeholder:
+    // choice = input[0] - 48
+
+    // -----------------------------------------
+    // DEMO FLOW
+    // -----------------------------------------
+    // Replace this section with real parsing
+    // once array indexing exists in the IR.
+
+    if ( room == 0 )
+        choice = 1
+    fi
+
+    if ( room == 1 )
+        if ( has_key == 0 )
+            choice = 3
+        esle
+            choice = 2
+        fi
+    fi
+
+    // ACTIONS
+
+    if ( choice == 1 )
+        @move_north()
+    fi
+
+    if ( choice == 2 )
+        @move_east()
+    fi
+
+    if ( choice == 3 )
+        @search_room()
+    fi
+
+    if ( choice == 4 )
+        .output quit_msg
+        game_running = 0
+    fi
+}

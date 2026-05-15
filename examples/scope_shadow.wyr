@@ -1,0 +1,11 @@
+wyr 1
+// Global `g` is shadowed by parameter `g`; after the call the global is unchanged.
+
+g:i32 1
+
+fn i32 @use_shadow (i32 g) {
+	.ret g
+}
+
+x:i32 0
+x = @use_shadow(40)

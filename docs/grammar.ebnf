@@ -1,0 +1,57 @@
+(* Wyr IR v1 — subset aligned with docs/IR.md. *)
+(* The reference compiler is line-oriented; this grammar abstracts statement shapes. *)
+
+module        ::= { line } ;
+line          ::= version_line | decl | assign_line | action_line | intrinsic_line
+                | user_call_line | if_line | while_open | else_line | fi_line | esle_line
+                | fn_line | rbrace ;
+
+version_line  ::= "wyr" integer ;
+
+decl          ::= ident ":" type initializer tail_opt ;
+tail_opt      ::= (* empty *) | "const" ;
+initializer   ::= string_lit | integer ;
+(* buffer: integer byte count; string: string_lit *)
+
+assign_line   ::= ident "=" expr ;
+
+expr          ::= arith_expr ;
+arith_expr    ::= term { ("+" | "-") term } ;
+term          ::= factor { ("*" | "/" | "%") factor } ;
+factor        ::= integer | ident | "(" expr ")" | "-" factor | call_expr ;
+call_expr     ::= "@" ident "(" [ expr_list ] ")" ;
+expr_list     ::= expr { "," expr } ;
+
+relop         ::= "<=" | ">=" | "==" | "!=" | "<" | ">" ;
+
+action_line   ::= ident "<<" ident ;
+
+intrinsic_line ::= "." ident [ rest_of_line ] ;
+
+user_call_line ::= "@" ident "(" [ expr_list ] ")" ;
+
+if_line       ::= "if" "(" condition ")" ;
+condition     ::= expr relop expr ;
+
+while_open    ::= "while" "(" condition ")" "{" ;
+else_line     ::= "else" ;
+fi_line       ::= "fi" ;
+esle_line     ::= "esle" ;
+
+fn_line       ::= "fn" ret_type "@" ident "(" [ params ] ")" "{" ;
+ret_type      ::= "void" | "i8" | "i16" | "i32" | "i64" | "int" | "string" | "buffer" ;
+params        ::= type ident { "," type ident } ;
+
+rbrace        ::= "}" ;
+
+ident         ::= letter { letter | digit | "_" } ;
+letter        ::= "A" | "B" | "C" | "D" | "E" | "F" | "G" | "H" | "I" | "J" | "K" | "L" | "M"
+                | "N" | "O" | "P" | "Q" | "R" | "S" | "T" | "U" | "V" | "W" | "X" | "Y" | "Z"
+                | "a" | "b" | "c" | "d" | "e" | "f" | "g" | "h" | "i" | "j" | "k" | "l" | "m"
+                | "n" | "o" | "p" | "q" | "r" | "s" | "t" | "u" | "v" | "w" | "x" | "y" | "z" | "_" ;
+digit         ::= "0" | "1" | "2" | "3" | "4" | "5" | "6" | "7" | "8" | "9" ;
+integer       ::= [ "-" ] digit { digit } ;
+string_lit    ::= '"' { char } '"' ;
+char          ::= (* any except '"' and unescaped newline *) ;
+
+type          ::= "i8" | "i16" | "i32" | "i64" | "int" | "string" | "buffer" | "void" ;

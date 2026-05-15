@@ -1,0 +1,106 @@
+wyr 1
+// Advanced IR demo: multi-arg functions, call expressions, modulo, while, if/else, assignments.
+
+// --- helpers -----------------------------------------------------------------
+
+fn i32 @max (i32 a, i32 b) {
+	if (a > b)
+		.ret a
+	fi
+	else
+		.ret b
+	esle
+}
+
+fn i32 @gcd (i32 a, i32 b) {
+	t:i32 0
+	while (b != 0) {
+		t = a % b
+		a = b
+		b = t
+	}
+	.ret a
+}
+
+// Iterative Fibonacci: fib(0)=0, fib(1)=1, fib(2)=1, fib(3)=2, ...
+fn i32 @fib (i32 n) {
+	prev:i32 0
+	cur:i32 1
+	i:i32 0
+	nextv:i32 0
+	while (i < n) {
+		nextv = prev + cur
+		prev = cur
+		cur = nextv
+		i = i + 1
+	}
+	.ret prev
+}
+
+fn void @report_pair (i32 ok) {
+	line:buffer 48
+	okmsg:string "PASS "
+	failmsg:string "FAIL "
+	eol:string 10
+	if (ok != 0)
+		line<<okmsg
+	fi
+	else
+		line<<failmsg
+	esle
+	line<<eol
+	.output line
+	.clear_buff line
+}
+
+// --- main --------------------------------------------------------------------
+
+nl:string 10
+
+// Call chains and @-calls inside expressions
+
+m:i32 0
+m = @max(3, @max(7, 5))
+expect_max:i32 7
+chk_max:i32 0
+chk_max = m - expect_max
+if (chk_max == 0)
+	chk_max = 1
+fi
+else
+	chk_max = 0
+esle
+@report_pair(chk_max)
+
+g:i32 0
+g = @gcd(48, 18)
+expect_gcd:i32 6
+chk_g:i32 0
+chk_g = g - expect_gcd
+if (chk_g == 0)
+	chk_g = 1
+fi
+else
+	chk_g = 0
+esle
+@report_pair(chk_g)
+
+f8:i32 0
+f8 = @fib(8)
+expect_f8:i32 21
+chk_f:i32 0
+chk_f = f8 - expect_f8
+if (chk_f == 0)
+	chk_f = 1
+fi
+else
+	chk_f = 0
+esle
+@report_pair(chk_f)
+
+// Final banner
+banner:buffer 40
+done:string "advanced.wyr done"
+banner<<done
+banner<<nl
+.output banner

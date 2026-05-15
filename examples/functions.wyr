@@ -1,3 +1,4 @@
+wyr 1
 
 msg:string "Hi "
 nl:string 10
@@ -27,8 +28,14 @@ fn void @sayhi () {
 	f<<nl
 	@printfbuf()
 	@clean_up()
-	// .ret 1
 }
+
+fn i32 @answer () {
+	.ret 42
+}
+
+scratch:i32 0
+scratch = @answer()
 
 @askname()
 @sayhi()

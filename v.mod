@@ -1,5 +1,5 @@
 Module {
-	name: 'wyr'
+	name: 'wyr_cli'
 	description: ''
 	version: ''
 	license: ''

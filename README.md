@@ -38,6 +38,10 @@ Why NOT Wyr?
 - Wyr is currently not finished, and only implements really basic functionality
 - Wyr doesn't use a proper lexer for token gen
 
+## IR specification
+
+Wyr source **is** the IR. The normative syntax and semantics for `.wyr` files are documented in [docs/IR.md](docs/IR.md) (version line, types, intrinsics, calling convention).
+
 ## Built With
 
 This project uses pure V lang
@@ -74,6 +78,8 @@ git clone git@github.com:HUSKI3/Wyr.git
 cd Wyr
 ./build.sh examples/name.wyr
 ```
+
+A larger sample (`fn`, nested `@` calls, `while`, `%`, and checks) is [examples/advanced.wyr](examples/advanced.wyr).
 
 ## Roadmap
 

@@ -1,0 +1,10 @@
+wyr 1
+
+fn i32 @twice (i32 n) {
+	t:i32 0
+	t = n * 2
+	.ret t
+}
+
+x:i32 0
+x = @twice(3)

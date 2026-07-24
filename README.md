@@ -10,7 +10,7 @@
     A simple intermediate language compiling to NASM
     <br/>
     <br/>
-    <a href="https://github.com/HUSKI3/Wyr"><strong>Explore the docs »</strong></a>
+    <a href="docs/"><strong>The Wyr Book »</strong></a>
     <br/>
     <br/>
     <a href="https://github.com/HUSKI3/Wyr">View Demo</a>
@@ -36,11 +36,14 @@ Why Wyr?
 
 Why NOT Wyr?
 - Wyr is currently not finished, and only implements really basic functionality
-- Wyr doesn't use a proper lexer for token gen
 
 ## IR specification
 
-Wyr source **is** the IR. The normative syntax and semantics for `.wyr` files are documented in [docs/IR.md](docs/IR.md) (version line, types, intrinsics, calling convention).
+Wyr source **is** the IR. The normative syntax and semantics for `.wyr` files are documented in [The Wyr Book — IR specification](docs/language/ir-spec.md) (version line, types, intrinsics, calling convention).
+
+## Documentation
+
+Documentation lives in **The Wyr Book** (MkDocs). See [docs/](docs/) and `mkdocs.yml`. To preview locally: `mkdocs serve`.
 
 ## Built With
 
@@ -65,9 +68,9 @@ cd v
 sudo ./v symlink
 ```
 
-* NASM & LD
+* NASM & binutils (ld)
 ```sh
-sudo apt install nasm ld
+sudo apt install nasm binutils
 ```
 
 ### Installation
@@ -91,7 +94,6 @@ Contributions are what make the open source community such an amazing place to b
 * If you have suggestions for adding or removing projects, feel free to [open an issue](https://github.com/HUSKI3/Wyr/issues/new) to discuss it, or directly create a pull request after you edit the *README.md* file with necessary changes.
 * Please make sure you check your spelling and grammar.
 * Create individual PR for each suggestion.
-* Please also read through the [Code Of Conduct](https://github.com/HUSKI3/Wyr/blob/main/CODE_OF_CONDUCT.md) before posting your first idea as well.
 
 ### Creating A Pull Request
 

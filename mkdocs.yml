@@ -1,0 +1,83 @@
+site_name: The Wyr Book
+site_description: >-
+  TWB — the official guide and IR reference for Wyr, a hobby intermediate
+  language that compiles to NASM for Linux x86-64.
+site_author: Artur Z
+repo_url: https://github.com/HUSKI3/Wyr
+repo_name: HUSKI3/Wyr
+edit_uri: edit/main/docs/
+
+theme:
+  name: material
+  logo: assets/logo.png
+  favicon: assets/logo.png
+  palette:
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      primary: indigo
+      accent: indigo
+      toggle:
+        icon: material/brightness-7
+        name: Switch to dark mode
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      primary: indigo
+      accent: indigo
+      toggle:
+        icon: material/brightness-4
+        name: Switch to light mode
+  features:
+    - navigation.instant
+    - navigation.tracking
+    - navigation.sections
+    - navigation.expand
+    - navigation.top
+    - search.suggest
+    - search.highlight
+    - content.code.copy
+    - toc.follow
+
+plugins:
+  - search
+
+markdown_extensions:
+  - admonition
+  - attr_list
+  - def_list
+  - footnotes
+  - md_in_html
+  - tables
+  - toc:
+      permalink: true
+  - pymdownx.details
+  - pymdownx.highlight:
+      anchor_linenums: true
+  - pymdownx.superfences
+  - pymdownx.tabbed:
+      alternate_style: true
+
+nav:
+  - Home: index.md
+  - Getting Started:
+      - getting-started/installation.md
+      - getting-started/quickstart.md
+      - getting-started/build-and-test.md
+  - Language Guide:
+      - language/overview.md
+      - language/lexical-and-types.md
+      - language/declarations-and-expressions.md
+      - language/control-flow.md
+      - language/functions-and-abi.md
+      - language/intrinsics.md
+      - language/ir-spec.md
+      - language/grammar.md
+  - Examples: examples/index.md
+  - Tools:
+      - tools/compiler-cli.md
+      - tools/wyr-inspect.md
+  - Roadmap: roadmap.md
+
+extra:
+  social:
+    - icon: fontawesome/brands/github
+      link: https://github.com/HUSKI3/Wyr

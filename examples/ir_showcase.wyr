@@ -419,9 +419,9 @@ flow_buf<<nl
 ti = 0
 while (ti < 6) {
 	tick_buf<<tick_seg
+	tick_buf<<nl
 	ti = ti + 1
 }
-tick_buf<<nl
 .output tick_buf
 .clear_buff tick_buf
 

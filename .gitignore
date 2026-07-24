@@ -1,32 +1,34 @@
-# Binaries for programs and plugins
-main
-wyr
-wyr-inspect
-*.exe
-*.exe~
-*.so
-*.dylib
-*.dll
+# Root binaries only (do not ignore src/wyr/)
+/wyr
+/Wyr
+/wyr-inspect
+/wyr-inspect-bin
+/a.out
+
+# Build artifacts
+*.o
 *.out
 out.*
 *.asm
-out
+build/
 
-# Ignore binary output folders
-bin/
-
-# Ignore common editor/system specific metadata
+# Editor / OS
 .DS_Store
 .idea/
 .vscode/
 *.iml
+*~
 
-# ENV
+# Environment
 .env
 
-# vweb and database
+# V / misc
 *.db
-*.js
 
-# testing
-test.py
+# MkDocs site output
+site/
+
+# Python venv (docs tooling)
+.venv/
+venv/
+__pycache__/
